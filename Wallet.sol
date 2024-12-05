@@ -1,24 +1,29 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.5.0;
+
+import "./IERC20.sol"; // Importe o interface ERC-20
 
 contract Wallet {
-    address public owner;
-    uint256 public fee; // Taxa de saque em partes por 10000 (0.01%)
+    mapping(address => uint) public balances;
+    mapping(address => mapping(address => uint)) public allowances;
 
-    constructor() {
-        owner = msg.sender;
-        fee = 10; // Equivalente a 0.01%
+    // Adicione um array para armazenar os endereços dos tokens suportados
+    address[] public supportedTokens;
+
+    function deposit(address token, uint amount) public {
+        require(contains(supportedTokens, token), "Token not supported");
+        IERC20(token).transferFrom(msg.sender, address(this), amount);
+        // ... lógica para atualizar o balance do usuário
     }
 
-    receive() external payable {}
+    // Outras funções...
 
-    function withdraw(address payable to, uint256 amount) public payable {
-        require(msg.sender == owner, "Only owner can withdraw");
-
-        uint256 feeAmount = amount * fee / 10000;
-        require(address(this).balance >= amount + feeAmount, "Insufficient balance");
-
-        payable(to).transfer(amount);
-        owner.transfer(feeAmount);
+    function contains(address[] memory arr, address element) private pure returns (bool) {
+        for (uint i = 0; i < arr.length; i++) {
+            if (arr[i] == element) {
+                return true;
+            }
+        }
+        return false;
     }
 }
