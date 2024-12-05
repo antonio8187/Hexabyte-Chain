@@ -1,32 +1,57 @@
-pragma solidity >=0.4.22 <0.9.0;
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "./MultiSigWallet.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-contract MyToken is ERC20 {
-    address private _owner;
-    MultiSigWallet private _multiSigWallet;
+contract MultiSigWallet_ERC20 {
+    address[] public owners;
+    uint256 public required;
+    mapping(address => uint256) public confirmed;
 
-    constructor(string memory name, string memory symbol, uint256 initialSupply, address owner, address walletAddress) ERC20(name, symbol) {
-        _owner = owner;
-        _multiSigWallet = MultiSigWallet(walletAddress);
-        _mint(owner, initialSupply);
+    mapping(address => uint256) public balances;
+    mapping(address => bool) public tokens;
+    uint256 public fee;
+
+    event Deposit(address indexed from, address indexed token, uint256 amount);
+    event Withdraw(address indexed to, address indexed token, uint256 amount);
+    event AddOwner(address owner);
+    event RemoveOwner(address owner);
+    event ReplaceOwner(address oldOwner, address newOwner);
+    event RequireSignaturesChanged(uint256 required);
+    event AddToken(address token);
+    event RemoveToken(address token);
+    event FeeChanged(uint256 fee);
+
+    constructor(address[] memory _owners, uint256 _required) {
+        owners = _owners;
+        required = _required;
     }
 
-    function transfer(address recipient, uint256 amount) public virtual override returns (bool) {
-        require(recipient != address(_multiSigWallet), "Transfer to the multisig wallet is not allowed");
-        super.transfer(recipient, amount);
-        return true;
+    receive() external payable {
+        emit Deposit(msg.sender, address(0), msg.value);
     }
 
-    function sendToMultiSigWallet(address wallet, uint256 amount) public returns (bool) {
-        require(msg.sender == _owner, "Only the owner of the token can send tokens to the multisig wallet");
-        super.transfer(wallet, amount);
-        _multiSigWallet.confirmTransaction(address(this), wallet, amount);
-        return true;
+    function deposit(address token, uint256 amount) public {
+        IERC20(token).transferFrom(msg.sender, address(this), amount);
+        balances[token] += amount;
+        emit Deposit(msg.sender, token, amount);
     }
 
-    function getMultiSigWalletAddress() public view returns (address) {
-        return address(_multiSigWallet);
+    function withdraw(address to, address token, uint256 amount) public {
+        require(confirmed[msg.sender] == 0, "You have already confirmed this transaction");
+        confirmed[msg.sender] = 1;
+        require(confirmed[token] + 1 >= required, "Signatures not enough");
+
+        uint256 balance = balances[token];
+        require(balance >= amount, "Insufficient balance");
+
+        uint256 feeAmount = amount * fee / 10000;
+        balances[token] -= amount + feeAmount;
+        IERC20(token).transfer(to, amount);
+
+        delete confirmed[token];
+        emit Withdraw(to, token, amount);
     }
+
+    // ... outras funções para adicionar/remover signatários, tokens, e alterar a taxa ...
 }
